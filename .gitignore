@@ -44,3 +44,5 @@ Thumbs.db
 # Project specific local/temporary files
 cardiovision/analyze_out.json
 cardiovision/upload.json
+cardiovision/data/
+
