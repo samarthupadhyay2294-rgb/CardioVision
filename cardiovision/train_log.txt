@@ -1,0 +1,10 @@
+﻿python :   File "cardiovision/scripts/train_model.py", line 31
+At C:\Users\DELL\AppData\Local\Temp\ps-script-6bca691b-45f6-4ccf-a4f3-4020c3c1812f.ps1:99 char:83
++ ... tgbm shap -q; python cardiovision/scripts/train_model.py 2>&1 | Out-F ...
++                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (  File "cardiov...el.py", line 31:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    print(f"Model saved to {OUTPUT}")
+                                   ^
+SyntaxError: invalid syntax
