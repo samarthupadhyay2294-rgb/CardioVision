@@ -76,4 +76,5 @@ Open the **cardiovision-web** URL and run **Analyze Report**.
 | Build fails on ML train | Ensure `ml_models/datasets/heart_disease_data_enhanced.csv` is committed |
 | CORS error | Set `CORS_ORIGINS` on API to exact frontend URL (https, no trailing slash) |
 | 502 on first request | Wait for cold start; check API logs |
-| Database error | Confirm `DATABASE_URL` uses PostgreSQL from Render (auto-fixed to `postgresql://`) |
+| Database error / `could not translate host name "dpg-..."` | Your `DATABASE_URL` points to a missing or expired Postgres instance. In Render: **New + → PostgreSQL** (or open existing `cardiovision-db`), copy **Internal Database URL**, paste into **cardiovision-api → Environment → DATABASE_URL**, save to redeploy. Free databases expire after 90 days of inactivity. |
+| Database error (general) | Confirm `DATABASE_URL` uses PostgreSQL from Render (auto-fixed to `postgresql://`) |
