@@ -4,6 +4,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -43,13 +45,24 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
+origins = settings.cors_origin_list
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
+    allow_origins=origins if "*" not in origins else ["*"],
+    allow_origin_regex=r"https://.*\.onrender\.com|http://localhost:\d+|http://127\.0\.0\.1:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(_request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc) or "Internal server error"},
+    )
+
 
 prefix = settings.api_prefix
 app.include_router(auth.router, prefix=prefix)
@@ -65,3 +78,4 @@ def health():
 @app.get("/")
 def root():
     return {"message": "CardioVision API", "docs": "/docs"}
+

@@ -1,8 +1,15 @@
-/** Browser uses same-origin /api (Next.js rewrite → backend). Server-side uses env URL. */
+/**
+ * API Base URL resolution:
+ * Uses process.env.NEXT_PUBLIC_API_URL when set (e.g. on Render deployment).
+ * In browser, falls back to "" (Next.js same-origin rewrites) if env is not defined.
+ * Server-side falls back to http://127.0.0.1:8000.
+ */
 export const API_BASE =
-  typeof window !== "undefined"
+  process.env.NEXT_PUBLIC_API_URL
+    ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")
+    : typeof window !== "undefined"
     ? ""
-    : process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+    : "http://127.0.0.1:8000";
 
 export type AnalysisResult = {
   report_id: string;
@@ -51,25 +58,56 @@ function uploadHeaders(): HeadersInit {
   return h;
 }
 
-export async function ensureGuestSession(): Promise<string> {
-  const existing = localStorage.getItem("cv_guest");
-  if (existing) return existing;
-  const res = await fetch(`${API_BASE}/api/auth/guest-session`, { method: "POST" });
-  const data = await res.json();
-  localStorage.setItem("cv_guest", data.guest_session);
-  return data.guest_session;
+async function safeJson<T = any>(res: Response): Promise<T> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Invalid response from server (HTTP ${res.status}): ${text.slice(0, 150) || "Empty response"}`
+    );
+  }
 }
 
 async function parseError(res: Response): Promise<string> {
-  try {
-    const err = await res.json();
-    const detail = err.detail;
-    if (typeof detail === "string") return detail;
-    if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d.msg).join(", ");
-    return "Request failed";
-  } catch {
-    return res.status === 0 ? "Cannot reach API — is the backend running on port 8000?" : `Request failed (${res.status})`;
+  if (res.status === 429) {
+    return "Too many requests. Please wait a few seconds before trying again.";
   }
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    return "Backend service is starting up on Render (free tier cold start). Please wait 30 seconds and try again.";
+  }
+  try {
+    const text = await res.text();
+    try {
+      const err = JSON.parse(text);
+      const detail = err.detail || err.message || err.error;
+      if (typeof detail === "string") return detail;
+      if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d.msg).join(", ");
+    } catch {
+      if (text && text.trim().length > 0 && text.trim().length < 200) {
+        return text.trim();
+      }
+    }
+    return `Request failed with status ${res.status}`;
+  } catch {
+    return res.status === 0
+      ? "Cannot reach API — is the backend running?"
+      : `Request failed (${res.status})`;
+  }
+}
+
+export async function ensureGuestSession(): Promise<string> {
+  if (typeof window !== "undefined") {
+    const existing = localStorage.getItem("cv_guest");
+    if (existing) return existing;
+  }
+  const res = await fetch(`${API_BASE}/api/auth/guest-session`, { method: "POST" });
+  if (!res.ok) throw new Error(await parseError(res));
+  const data = await safeJson(res);
+  if (typeof window !== "undefined" && data?.guest_session) {
+    localStorage.setItem("cv_guest", data.guest_session);
+  }
+  return data.guest_session;
 }
 
 export async function uploadAndAnalyze(file: File): Promise<AnalysisResult> {
@@ -83,20 +121,20 @@ export async function uploadAndAnalyze(file: File): Promise<AnalysisResult> {
     body: form,
   });
   if (!uploadRes.ok) throw new Error(await parseError(uploadRes));
-  const { report_id } = await uploadRes.json();
+  const { report_id } = await safeJson(uploadRes);
 
   const analyzeRes = await fetch(`${API_BASE}/api/analyze/${report_id}`, {
     method: "POST",
     headers: headers(),
   });
   if (!analyzeRes.ok) throw new Error(await parseError(analyzeRes));
-  return analyzeRes.json();
+  return safeJson(analyzeRes);
 }
 
 export async function getReport(id: string): Promise<AnalysisResult> {
   const res = await fetch(`${API_BASE}/api/report/${id}`, { headers: headers() });
-  if (!res.ok) throw new Error("Report not found");
-  return res.json();
+  if (!res.ok) throw new Error(await parseError(res));
+  return safeJson(res);
 }
 
 export async function login(email: string, password: string) {
@@ -105,9 +143,11 @@ export async function login(email: string, password: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  if (!res.ok) throw new Error("Invalid credentials");
-  const data = await res.json();
-  localStorage.setItem("cv_token", data.access_token);
+  if (!res.ok) throw new Error(await parseError(res));
+  const data = await safeJson(res);
+  if (typeof window !== "undefined" && data?.access_token) {
+    localStorage.setItem("cv_token", data.access_token);
+  }
   return data;
 }
 
@@ -117,31 +157,28 @@ export async function register(email: string, password: string, full_name?: stri
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, full_name }),
   });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.detail || "Registration failed");
+  if (!res.ok) throw new Error(await parseError(res));
+  const data = await safeJson(res);
+  if (typeof window !== "undefined" && data?.access_token) {
+    localStorage.setItem("cv_token", data.access_token);
   }
-  const data = await res.json();
-  localStorage.setItem("cv_token", data.access_token);
   return data;
 }
 
 export async function getDashboard() {
   const res = await fetch(`${API_BASE}/api/dashboard`, { headers: headers() });
-  if (!res.ok) throw new Error("Dashboard unavailable");
-  return res.json();
+  if (!res.ok) throw new Error(await parseError(res));
+  return safeJson(res);
 }
 
 export async function getHistory() {
   const res = await fetch(`${API_BASE}/api/history`, { headers: headers() });
-  if (!res.ok) throw new Error("History unavailable");
-  return res.json();
+  if (!res.ok) throw new Error(await parseError(res));
+  return safeJson(res);
 }
 
 export function pdfDownloadUrl(reportId: string) {
-  const base =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+  const base = API_BASE || (typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8000");
   return `${base}/api/pdf/${reportId}`;
 }
+

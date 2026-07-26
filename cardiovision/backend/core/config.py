@@ -51,12 +51,18 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        if "*" in origins:
+            return ["*"]
         web_url = __import__("os").environ.get("RENDER_EXTERNAL_URL", "").strip()
         if web_url and web_url not in origins:
             origins.append(web_url)
+        for default_web in ["https://cardiovision-web.onrender.com"]:
+            if default_web not in origins:
+                origins.append(default_web)
         return origins
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+

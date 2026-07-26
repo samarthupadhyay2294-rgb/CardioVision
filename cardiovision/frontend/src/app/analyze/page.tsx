@@ -52,10 +52,11 @@ export default function AnalyzePage() {
       clearInterval(timer);
       const msg = e instanceof Error ? e.message : "Analysis failed";
       setError(
-        msg.includes("fetch") || msg.includes("Failed")
-          ? "Cannot reach the API. Ensure the backend is running (port 8000). First analysis may take 2–3 minutes while OCR models load."
+        msg.includes("Failed to fetch") || msg.includes("NetworkError")
+          ? "Cannot reach the API. The Render backend service may be waking up (takes up to 1 minute on free tier). Please wait a moment and try again."
           : msg
       );
+
       setLoading(false);
       setStep(0);
     }
